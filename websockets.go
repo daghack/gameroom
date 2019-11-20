@@ -3,7 +3,7 @@ package main
 import (
 	"net/http"
 	"websockets/ai"
-	"websockets/ai/monteminmax/connect4ai"
+	"websockets/ai/minmax/connect4ai"
 	"websockets/gameroom"
 	"websockets/games/connect4"
 )

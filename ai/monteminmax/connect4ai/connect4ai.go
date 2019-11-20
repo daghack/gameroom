@@ -315,7 +315,7 @@ func (agent *Agent) GenerateAction(state ai.State) ai.Action {
 	if a.Rematch {
 		return a
 	}
-	action, score := agent.max(is, 0, 7)
+	action, score := agent.max(is, 0, 3)
 	fmt.Println("Action: ", action)
 	fmt.Println("Score: ", score)
 	return &Action{
