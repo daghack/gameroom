@@ -219,6 +219,12 @@ func (state *State) LegalActions() []ai.Action {
 			})
 		}
 	}
+	if len(toret) == 0 {
+		toret = append(toret, &Action{
+			Rematch: true,
+		})
+		return toret
+	}
 	return toret
 }
 
