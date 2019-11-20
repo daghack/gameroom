@@ -21,8 +21,10 @@ func gameConnect(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	game, _ = gameroom.NewGameRoom(connect4.NewConnect4())
+	fs := http.FileServer(http.Dir("./static"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
 	http.HandleFunc("/game", gameConnect)
-	go http.ListenAndServe("localhost:8080", nil)
+	go http.ListenAndServe(":8080", nil)
 	a := &connect4ai.Agent{
 		AgentId: "Bot",
 	}
