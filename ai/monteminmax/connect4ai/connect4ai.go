@@ -264,7 +264,7 @@ func (agent *Agent) CanAct(state ai.State) bool {
 	return correctTurn || rematch
 }
 
-func (agent *Agent) min(is *internalState, p_action, depth int) (int, int) {
+func (agent *Agent) min(is *internalState, alpha, beta, p_action, depth int) (int, int) {
 	if depth == 0 {
 		return p_action, is.score()
 	}
@@ -275,17 +275,23 @@ func (agent *Agent) min(is *internalState, p_action, depth int) (int, int) {
 
 	for _, action := range actions {
 		is.makeMove(action)
-		_, score := agent.max(is, action, depth-1)
+		_, score := agent.max(is, alpha, beta, action, depth-1)
 		is.unmakeMove(action)
 		if score < bestScore {
 			bestAction = action
 			bestScore = score
+			if bestScore < beta {
+				beta = bestScore
+			}
+			if alpha >= beta {
+				break
+			}
 		}
 	}
 	return bestAction, bestScore
 }
 
-func (agent *Agent) max(is *internalState, p_action, depth int) (int, int) {
+func (agent *Agent) max(is *internalState, alpha, beta, p_action, depth int) (int, int) {
 	if depth == 0 || is.stalemateCheck() || is.victoryCheck() >= 0 {
 		return p_action, is.score()
 	}
@@ -296,11 +302,17 @@ func (agent *Agent) max(is *internalState, p_action, depth int) (int, int) {
 
 	for _, action := range actions {
 		is.makeMove(action)
-		_, score := agent.min(is, action, depth-1)
+		_, score := agent.min(is, alpha, beta, action, depth-1)
 		is.unmakeMove(action)
 		if score > bestScore {
 			bestAction = action
 			bestScore = score
+			if bestScore > alpha {
+				alpha = bestScore
+			}
+			if alpha >= beta {
+				break
+			}
 		}
 	}
 	return bestAction, bestScore
@@ -315,7 +327,7 @@ func (agent *Agent) GenerateAction(state ai.State) ai.Action {
 	if a.Rematch {
 		return a
 	}
-	action, score := agent.max(is, 0, 3)
+	action, score := agent.max(is, -10000000, 10000000, 0, 7)
 	fmt.Println("Action: ", action)
 	fmt.Println("Score: ", score)
 	return &Action{
