@@ -64,6 +64,9 @@ func (is *internalState) rollout() int {
 		}
 	}
 	moves := is.generateMoves()
+	if len(moves) == 0 {
+		return 0
+	}
 	rand := moves[rand.Intn(len(moves))]
 	is.makeMove(rand)
 	defer is.unmakeMove(rand)
