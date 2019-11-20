@@ -5,7 +5,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
 	"net/http"
-	"websocket/games/types"
+	"websockets/games/types"
 )
 
 type GameRoom struct {
@@ -37,7 +37,8 @@ func (gr *GameRoom) ConnectToGame(playerId string, w http.ResponseWriter, r *htt
 	if err != nil {
 		panic(err)
 	}
-	defer gr.game.Leave(playerId)
+	// Commenting out, because a player disconnecting does not indicate a player left IF we don't want a game tied to a single browser visit.
+	// defer gr.game.Leave(playerId)
 
 	gr.runPlayerSession(playerId, c)
 }
@@ -46,7 +47,7 @@ func (gr *GameRoom) runPlayerSession(playerId string, conn *websocket.Conn) {
 	_, ok := gr.playerConnections[playerId]
 	if ok {
 		// Already opened in another browser, probably. Figure out how to handle this?
-		return
+		// Or refreshed, apparently.
 	}
 	ch := make(chan bool, 1)
 	gr.playerConnections[playerId] = ch
@@ -56,7 +57,10 @@ func (gr *GameRoom) runPlayerSession(playerId string, conn *websocket.Conn) {
 }
 
 func (gr *GameRoom) forwardGameMoves(playerId string, conn *websocket.Conn) {
-	moveChan := gr.game.MovesChannel(playerId)
+	moveChan, err := gr.game.MovesChannel(playerId)
+	if err != nil {
+		panic(err)
+	}
 	for {
 		mtype, msg, err := conn.ReadMessage()
 		fmt.Println(mtype, string(msg), err)
@@ -70,9 +74,10 @@ func (gr *GameRoom) forwardGameMoves(playerId string, conn *websocket.Conn) {
 		}
 		switch mtype {
 		case websocket.TextMessage:
+			fmt.Println("SENDING MOVE THROUGH MOVE CHAN:", string(msg))
 			move := &types.Move{
-				playerId: playerId,
-				data:     msg,
+				PlayerId: playerId,
+				Data:     msg,
 			}
 			moveChan <- move
 		default:
@@ -82,7 +87,10 @@ func (gr *GameRoom) forwardGameMoves(playerId string, conn *websocket.Conn) {
 }
 
 func (gr *GameRoom) forwardGameUpdates(playerId string, conn *websocket.Conn) {
-	updates := gr.game.UpdatesChannel(playerId)
+	updates, err := gr.game.UpdatesChannel(playerId)
+	if err != nil {
+		panic(err)
+	}
 	for {
 		select {
 		case <-gr.playerConnections[playerId]:
