@@ -110,7 +110,7 @@ func (is *internalState) directionalWinCheck(cdelta, rdelta int) int {
 			for i := 1; i < 4; i += 1 {
 				rind := row + (i * rdelta)
 				cind := col + (i * cdelta)
-				if is.board[col][row] != checkingPiece {
+				if is.board[cind][rind] != checkingPiece {
 					match = false
 					break
 				}
