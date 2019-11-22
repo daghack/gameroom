@@ -91,98 +91,52 @@ func (is *internalState) stalemateCheck() bool {
 	return true
 }
 
-func (is *internalState) victoryCheck() int {
-	v := is.colVictoryCheck()
-	if v > -1 {
-		return v
-	}
-	v = is.rowVictoryCheck()
-	if v > -1 {
-		return v
-	}
-	v = is.diagTopRightCheck()
-	if v > -1 {
-		return v
-	}
-	return is.diagTopLeftCheck()
-}
-
-func (is *internalState) colVictoryCheck() int {
+func (is *internalState) directionalWinCheck(cdelta, rdelta int) int {
 	for col, h := range is.height {
-		if h < 4 {
-			continue
-		}
-		match := true
-		top := is.board[col][h-1]
-		for i := 0; i < 3; i += 1 {
-			match = match && top == is.board[col][h-2-i]
-		}
-		if match {
-			return top
-		}
-	}
-	return -1
-}
-
-func (is *internalState) rowVictoryCheck() int {
-	checkfor := is.height[:connect4.Width-3]
-	for col, h := range checkfor {
-		if h == 0 {
-			continue
-		}
 		for row := 0; row < h; row += 1 {
+			rlast := row + (3 * rdelta)
+			clast := col + (3 * cdelta)
+			if rlast < 0 || clast < 0 {
+				continue
+			}
+			if rlast >= connect4.Height || clast >= connect4.Width {
+				continue
+			}
 			match := true
-			top := is.board[col][row]
-			for i := 0; i < 3; i += 1 {
-				match = match && top == is.board[col+1+i][row]
+			checkingPiece := is.board[col][row]
+			if checkingPiece == -1 {
+				continue
+			}
+			for i := 1; i < 4; i += 1 {
+				rind := row + (i * rdelta)
+				cind := col + (i * cdelta)
+				if is.board[col][row] != checkingPiece {
+					match = false
+					break
+				}
 			}
 			if match {
-				return top
+				return checkingPiece
 			}
 		}
 	}
 	return -1
 }
 
-func (is *internalState) diagTopRightCheck() int {
-	checkfor := is.height[:connect4.Width-3]
-	for col, h := range checkfor {
-		if h > connect4.Height-3 {
-			h = connect4.Height - 3
-		}
-		for row := 0; row < h; row += 1 {
-			match := true
-			top := is.board[col][row]
-			for i := 0; i < 3; i += 1 {
-				match = match && top == is.board[col+1+i][row+1+i]
-			}
-			if match {
-				return top
-			}
-		}
+func (is *internalState) victoryCheck() int {
+	v := is.directionalWinCheck(1, 0)
+	if v > -1 {
+		return v
 	}
-	return -1
-}
-
-func (is *internalState) diagTopLeftCheck() int {
-	checkfor := is.height[connect4.Width-4:]
-	for col, h := range checkfor {
-		if h > connect4.Height-3 {
-			h = connect4.Height - 3
-		}
-		col = col + 3
-		for row := 0; row < h; row += 1 {
-			match := true
-			top := is.board[col][row]
-			for i := 0; i < 3; i += 1 {
-				match = match && top == is.board[col-1-i][row+1+i]
-			}
-			if match {
-				return top
-			}
-		}
+	v := is.directionalWinCheck(0, 1)
+	if v > -1 {
+		return v
 	}
-	return -1
+	v := is.directionalWinCheck(1, 1)
+	if v > -1 {
+		return v
+	}
+	return is.directionalWinCheck(-1, 1)
 }
 
 type Action struct {
