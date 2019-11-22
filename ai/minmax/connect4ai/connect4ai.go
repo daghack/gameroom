@@ -155,19 +155,19 @@ func (is *internalState) directionalWinCheck(cdelta, rdelta int) int {
 }
 
 func (is *internalState) victoryCheck() int {
-	v := is.directionalWinCheckLastMove(1, 0)
+	v := is.directionalWinCheck(1, 0)
 	if v > -1 {
 		return v
 	}
-	v = is.directionalWinCheckLastMove(0, 1)
+	v = is.directionalWinCheck(0, 1)
 	if v > -1 {
 		return v
 	}
-	v = is.directionalWinCheckLastMove(1, 1)
+	v = is.directionalWinCheck(1, 1)
 	if v > -1 {
 		return v
 	}
-	return is.directionalWinCheckLastMove(-1, 1)
+	return is.directionalWinCheck(-1, 1)
 }
 
 type Action struct {
