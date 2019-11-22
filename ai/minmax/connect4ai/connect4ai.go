@@ -128,11 +128,11 @@ func (is *internalState) victoryCheck() int {
 	if v > -1 {
 		return v
 	}
-	v := is.directionalWinCheck(0, 1)
+	v = is.directionalWinCheck(0, 1)
 	if v > -1 {
 		return v
 	}
-	v := is.directionalWinCheck(1, 1)
+	v = is.directionalWinCheck(1, 1)
 	if v > -1 {
 		return v
 	}
