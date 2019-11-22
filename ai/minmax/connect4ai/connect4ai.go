@@ -17,6 +17,7 @@ type internalState struct {
 	height []int
 	turn   int
 	agent  int
+	moves  []int
 }
 
 func buildInternalState(agentId string, s *connect4.UpdateGameState) *internalState {
@@ -25,6 +26,7 @@ func buildInternalState(agentId string, s *connect4.UpdateGameState) *internalSt
 		height: []int{},
 		turn:   int(s.CurrentTurn),
 		agent:  int(s.Players[agentId]),
+		moves:  []int{},
 	}
 	for col := 0; col < connect4.Width; col += 1 {
 		toret.board = append(toret.board, []int{})
@@ -73,6 +75,7 @@ func (is *internalState) makeMove(col int) {
 	is.board[col][height] = is.turn
 	is.height[col] = height + 1
 	is.turn = 1 - is.turn
+	is.moves = append(is.moves, col)
 }
 
 func (is *internalState) unmakeMove(col int) {
@@ -80,6 +83,7 @@ func (is *internalState) unmakeMove(col int) {
 	is.board[col][height-1] = -1
 	is.height[col] = height - 1
 	is.turn = 1 - is.turn
+	is.moves = is.moves[:len(is.moves)-2]
 }
 
 func (is *internalState) stalemateCheck() bool {
@@ -89,6 +93,33 @@ func (is *internalState) stalemateCheck() bool {
 		}
 	}
 	return true
+}
+
+func (is *internalState) directionalWinCheckLastMove(cdelta, rdelta int) int {
+	col := is.moves[len(is.moves)-1]
+	row := is.height[col] - 1
+
+	rlast := row + (3 * rdelta)
+	clast := col + (3 * cdelta)
+	if rlast < 0 || clast < 0 {
+		return -1
+	}
+	if rlast >= connect4.Height || clast >= connect4.Width {
+		return -1
+	}
+
+	checkingPiece := is.board[col][row]
+	if checkingPiece == -1 {
+		return -1
+	}
+	for i := 1; i < 4; i += 1 {
+		rind := row + (i * rdelta)
+		cind := col + (i * cdelta)
+		if is.board[cind][rind] != checkingPiece {
+			return -1
+		}
+	}
+	return checkingPiece
 }
 
 func (is *internalState) directionalWinCheck(cdelta, rdelta int) int {
@@ -124,19 +155,19 @@ func (is *internalState) directionalWinCheck(cdelta, rdelta int) int {
 }
 
 func (is *internalState) victoryCheck() int {
-	v := is.directionalWinCheck(1, 0)
+	v := is.directionalWinCheckLastMove(1, 0)
 	if v > -1 {
 		return v
 	}
-	v = is.directionalWinCheck(0, 1)
+	v = is.directionalWinCheckLastMove(0, 1)
 	if v > -1 {
 		return v
 	}
-	v = is.directionalWinCheck(1, 1)
+	v = is.directionalWinCheckLastMove(1, 1)
 	if v > -1 {
 		return v
 	}
-	return is.directionalWinCheck(-1, 1)
+	return is.directionalWinCheckLastMove(-1, 1)
 }
 
 type Action struct {
