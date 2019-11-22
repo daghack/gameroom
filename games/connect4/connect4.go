@@ -3,94 +3,49 @@ package connect4
 import (
 	"encoding/json"
 	"fmt"
+	ctypes "websockets/games/connect4/types"
 	"websockets/games/types"
 )
 
-const (
-	Red = iota
-	Black
-)
-
-const (
-	Width  int = 7
-	Height int = 6
-)
-
-type Color int
-
-type Position struct {
-	Row int
-	Col int
-}
-
-type MoveData struct {
-	Col     int
-	Rematch bool
-}
-
-type GameState struct {
-	CurrentTurn      Color
-	Columns          [Width][]Color
-	GameOver         bool
-	WinningPositions []Position
-}
-
-type UpdateGameState struct {
-	GameState
-	Players map[string]Color
-}
-
-type PlayerInfo struct {
-	playerColor    Color
-	updateChan     chan []byte
-	rematchAttempt bool
-}
-
 type Connect4 struct {
-	state       GameState
-	players     map[string]*PlayerInfo
+	state       ctypes.GameState
+	players     map[string]*ctypes.PlayerInfo
 	moveChannel chan *types.Move
-}
-
-func newState() GameState {
-	return GameState{
-		Columns: [Width][]Color{{}, {}, {}, {}, {}, {}, {}},
-	}
 }
 
 func NewConnect4() *Connect4 {
 	toret := &Connect4{
-		state:       newState(),
-		players:     map[string]*PlayerInfo{},
+		state:       ctypes.NewGameState(),
+		players:     map[string]*ctypes.PlayerInfo{},
 		moveChannel: make(chan *types.Move, 16),
 	}
 	go toret.gameLoop()
 	return toret
 }
 
-func (connect *Connect4) requestRematch(player *PlayerInfo) {
-	player.rematchAttempt = true
+func (connect Connect4) requestRematch(player *ctypes.PlayerInfo) {
+	player.RematchAttempt = true
 	rematch := true
 	for _, player := range connect.players {
-		rematch = rematch && player.rematchAttempt
+		rematch = rematch && player.RematchAttempt
 	}
 	if rematch {
 		fmt.Println("REMATCH CONFIRMED")
-		connect.state = newState()
+		connect.state = ctypes.NewGameState()
 		for _, player := range connect.players {
-			player.rematchAttempt = false
+			player.RematchAttempt = false
 		}
 	}
 }
 
-func (connect *Connect4) gameLoop() {
+func (connect Connect4) gameLoop() {
 	for move := range connect.moveChannel {
 		info, ok := connect.players[move.PlayerId]
 		if !ok {
 			continue
 		}
 
-		m := &MoveData{
+		m := &ctypes.MoveData{
 			Col: -1,
 		}
 		err := json.Unmarshal(move.Data, m)
@@ -103,7 +58,7 @@ func (connect *Connect4) gameLoop() {
 			fmt.Println("REMATCH REQUESTED BY " + move.PlayerId)
 			connect.requestRematch(info)
 		} else {
-			err = connect.makeMove(info.playerColor, m.Col)
+			err = connect.makeMove(info.PlayerColor, m.Col)
 			if err != nil {
 				continue
 			}
@@ -116,18 +71,18 @@ func (connect *Connect4) sendUpdates() {
 	update := connect.marshalState()
 	for playerId, info := range connect.players {
 		fmt.Println("SENDING UPDATE TO " + playerId)
-		info.updateChan <- update
+		info.UpdateChan <- update
 	}
 }
 
-func (connect *Connect4) makeMove(piece Color, col int) error {
+func (connect *Connect4) makeMove(piece ctypes.Color, col int) error {
 	if piece != connect.state.CurrentTurn {
 		return fmt.Errorf("Not the correct turn.")
 	}
-	if col >= Width || col < 0 {
+	if col >= ctypes.Width || col < 0 {
 		return fmt.Errorf("Not a legitimate move")
 	}
-	if len(connect.state.Columns[col]) >= Height {
+	if len(connect.state.Columns[col]) >= ctypes.Height {
 		return fmt.Errorf("Column Full")
 	}
 	if connect.state.GameOver {
@@ -135,7 +90,7 @@ func (connect *Connect4) makeMove(piece Color, col int) error {
 		return nil
 	}
 	fmt.Println("MAKING A MOVE IN COLUMN:", col)
-	connect.state.CurrentTurn = Black - connect.state.CurrentTurn
+	connect.state.CurrentTurn = ctypes.Black - connect.state.CurrentTurn
 	connect.state.Columns[col] = append(connect.state.Columns[col], piece)
 	winCheck := connect.winCheck(col)
 	if winCheck != nil {
@@ -146,12 +101,12 @@ func (connect *Connect4) makeMove(piece Color, col int) error {
 }
 
 func (connect *Connect4) marshalState() []byte {
-	state := &UpdateGameState{
+	state := &ctypes.UpdateGameState{
 		GameState: connect.state,
-		Players:   map[string]Color{},
+		Players:   map[string]ctypes.Color{},
 	}
 	for player, info := range connect.players {
-		state.Players[player] = info.playerColor
+		state.Players[player] = info.PlayerColor
 	}
 	stateJson, _ := json.Marshal(state)
 	return stateJson
@@ -169,13 +124,13 @@ func (connect *Connect4) Join(playerId string) error {
 		return fmt.Errorf("Game Filled")
 	} else {
 		fmt.Println("PLAYER " + playerId + " JOINED GAME")
-		connect.players[playerId] = &PlayerInfo{
-			playerColor: Color(len(connect.players)),
-			updateChan:  make(chan []byte, 16),
+		connect.players[playerId] = &ctypes.PlayerInfo{
+			PlayerColor: ctypes.Color(len(connect.players)),
+			UpdateChan:  make(chan []byte, 16),
 		}
 	}
 	update := connect.marshalState()
-	connect.players[playerId].updateChan <- update
+	connect.players[playerId].UpdateChan <- update
 	return nil
 }
 
@@ -187,7 +142,7 @@ func (connect *Connect4) Leave(playerId string) error {
 
 func (connect *Connect4) UpdatesChannel(playerId string) (<-chan []byte, error) {
 	if info, ok := connect.players[playerId]; ok {
-		return info.updateChan, nil
+		return info.UpdateChan, nil
 	}
 	return nil, fmt.Errorf("No player in game with id %s", playerId)
 }
@@ -196,8 +151,8 @@ func (connect *Connect4) MovesChannel(playerId string) (chan<- *types.Move, erro
 	return connect.moveChannel, nil
 }
 
-func (connect *Connect4) winCheck(lastPlayed int) []Position {
-	if lastPlayed < 0 || lastPlayed >= Width {
+func (connect *Connect4) winCheck(lastPlayed int) []ctypes.Position {
+	if lastPlayed < 0 || lastPlayed >= ctypes.Width {
 		return nil
 	}
 	winCheck := connect.verticalCheck(lastPlayed)
@@ -211,7 +166,7 @@ func (connect *Connect4) winCheck(lastPlayed int) []Position {
 	return connect.diagonalCheck(lastPlayed)
 }
 
-func (connect *Connect4) verticalCheck(lastPlayed int) []Position {
+func (connect *Connect4) verticalCheck(lastPlayed int) []ctypes.Position {
 	colLen := len(connect.state.Columns[lastPlayed])
 	if colLen < 4 {
 		return nil
@@ -225,9 +180,9 @@ func (connect *Connect4) verticalCheck(lastPlayed int) []Position {
 		}
 	}
 	if win {
-		toret := []Position{}
+		toret := []ctypes.Position{}
 		for i := colLen - 4; i < colLen; i += 1 {
-			toret = append(toret, Position{
+			toret = append(toret, ctypes.Position{
 				Col: lastPlayed,
 				Row: i,
 			})
@@ -237,7 +192,7 @@ func (connect *Connect4) verticalCheck(lastPlayed int) []Position {
 	return nil
 }
 
-func (connect *Connect4) horizontalCheck(lastPlayed int) []Position {
+func (connect *Connect4) horizontalCheck(lastPlayed int) []ctypes.Position {
 	colLen := len(connect.state.Columns[lastPlayed])
 	lastPiece := connect.state.Columns[lastPlayed][colLen-1]
 	minC := lastPlayed - 3
@@ -245,8 +200,8 @@ func (connect *Connect4) horizontalCheck(lastPlayed int) []Position {
 		minC = 0
 	}
 	maxC := lastPlayed + 3
-	if maxC >= Width {
-		maxC = Width - 1
+	if maxC >= ctypes.Width {
+		maxC = ctypes.Width - 1
 	}
 	for col := minC; col <= lastPlayed; col += 1 {
 		if col+3 > maxC {
@@ -260,9 +215,9 @@ func (connect *Connect4) horizontalCheck(lastPlayed int) []Position {
 			}
 		}
 		if win {
-			toret := []Position{}
+			toret := []ctypes.Position{}
 			for colC := col; colC < col+4; colC += 1 {
-				toret = append(toret, Position{
+				toret = append(toret, ctypes.Position{
 					Row: colLen - 1,
 					Col: colC,
 				})
@@ -273,7 +228,7 @@ func (connect *Connect4) horizontalCheck(lastPlayed int) []Position {
 	return nil
 }
 
-func (connect *Connect4) diagonalCheck(pieceCol int) []Position {
+func (connect *Connect4) diagonalCheck(pieceCol int) []ctypes.Position {
 	pieceRow := len(connect.state.Columns[pieceCol]) - 1
 	lastPiece := connect.state.Columns[pieceCol][pieceRow]
 	colLeft := pieceCol - 3
@@ -282,12 +237,12 @@ func (connect *Connect4) diagonalCheck(pieceCol int) []Position {
 	for i := 0; i < 7; i += 1 {
 		row_i := rowBot + i
 		col_i := colLeft + i
-		if row_i < 0 || col_i < 0 || row_i >= Height || col_i >= Width {
+		if row_i < 0 || col_i < 0 || row_i >= ctypes.Height || col_i >= ctypes.Width {
 			continue
 		}
 		win := true
 		for check := 0; check < 4; check += 1 {
-			if row_i+check >= Height || col_i+check >= Width {
+			if row_i+check >= ctypes.Height || col_i+check >= ctypes.Width {
 				win = false
 				break
 			}
@@ -303,9 +258,9 @@ func (connect *Connect4) diagonalCheck(pieceCol int) []Position {
 			}
 		}
 		if win {
-			toret := []Position{}
+			toret := []ctypes.Position{}
 			for check := 0; check < 4; check += 1 {
-				toret = append(toret, Position{
+				toret = append(toret, ctypes.Position{
 					Row: row_i + check,
 					Col: col_i + check,
 				})
@@ -316,12 +271,12 @@ func (connect *Connect4) diagonalCheck(pieceCol int) []Position {
 	for i := 0; i < 7; i += 1 {
 		row_i := rowTop - i
 		col_i := colLeft + i
-		if row_i < 0 || col_i < 0 || row_i >= Height || col_i >= Width {
+		if row_i < 0 || col_i < 0 || row_i >= ctypes.Height || col_i >= ctypes.Width {
 			continue
 		}
 		win := true
 		for check := 0; check < 4; check += 1 {
-			if row_i-check < 0 || col_i+check >= Width {
+			if row_i-check < 0 || col_i+check >= ctypes.Width {
 				win = false
 				break
 			}
@@ -337,9 +292,9 @@ func (connect *Connect4) diagonalCheck(pieceCol int) []Position {
 			}
 		}
 		if win {
-			toret := []Position{}
+			toret := []ctypes.Position{}
 			for check := 0; check < 4; check += 1 {
-				toret = append(toret, Position{
+				toret = append(toret, ctypes.Position{
 					Row: row_i - check,
 					Col: col_i + check,
 				})
