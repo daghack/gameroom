@@ -1,5 +1,12 @@
 package types
 
+/* Update to be an interface with the Marshaler interface.
+type Move interface {
+	json.Marshaler
+	PlayerId() string
+}
+*/
+
 type Move struct {
 	PlayerId string
 	Data     []byte

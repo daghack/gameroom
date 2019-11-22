@@ -5,169 +5,30 @@ import (
 	"fmt"
 	"math/rand"
 	"websockets/ai"
-	"websockets/games/connect4"
+	ctypes "websockets/games/connect4/types"
+	internalstate "websockets/games/connect4/types/internalstate"
 )
 
 type State struct {
-	state *connect4.UpdateGameState
+	state *ctypes.UpdateGameState
 }
 
-type internalState struct {
-	board  [][]int
-	height []int
-	turn   int
-	agent  int
-	moves  []int
-}
-
-func buildInternalState(agentId string, s *connect4.UpdateGameState) *internalState {
-	toret := &internalState{
-		board:  [][]int{},
-		height: []int{},
-		turn:   int(s.CurrentTurn),
-		agent:  int(s.Players[agentId]),
-		moves:  []int{},
-	}
-	for col := 0; col < connect4.Width; col += 1 {
-		toret.board = append(toret.board, []int{})
-		toret.height = append(toret.height, len(s.Columns[col]))
-		for row := 0; row < connect4.Height; row += 1 {
-			if row < len(s.Columns[col]) {
-				toret.board[col] = append(toret.board[col], int(s.Columns[col][row]))
-			} else {
-				toret.board[col] = append(toret.board[col], -1)
-			}
-		}
-	}
-	return toret
-}
-
-func (is *internalState) score() int {
-	victor := is.victoryCheck()
+func score(is *internalstate.InternalState) int {
+	victor := is.VictoryCheck()
 	if victor < 0 {
-		if is.stalemateCheck() {
+		if is.StalemateCheck() {
 			return -100
 		}
-		return is.evaluate()
+		return evaluate(is)
 	}
-	if victor == is.agent {
+	if victor == is.Agent {
 		return 1000
 	}
 	return -1000
 }
 
-func (is *internalState) evaluate() int {
+func evaluate(is *internalstate.InternalState) int {
 	return rand.Intn(100)
-}
-
-func (is *internalState) generateMoves() []int {
-	toret := []int{}
-	for i, h := range is.height {
-		if h < connect4.Height {
-			toret = append(toret, i)
-		}
-	}
-	return toret
-}
-
-func (is *internalState) makeMove(col int) {
-	height := is.height[col]
-	is.board[col][height] = is.turn
-	is.height[col] = height + 1
-	is.turn = 1 - is.turn
-	is.moves = append(is.moves, col)
-}
-
-func (is *internalState) unmakeMove(col int) {
-	height := is.height[col]
-	is.board[col][height-1] = -1
-	is.height[col] = height - 1
-	is.turn = 1 - is.turn
-	is.moves = is.moves[:len(is.moves)-2]
-}
-
-func (is *internalState) stalemateCheck() bool {
-	for _, h := range is.height {
-		if h != connect4.Height {
-			return false
-		}
-	}
-	return true
-}
-
-func (is *internalState) directionalWinCheckLastMove(cdelta, rdelta int) int {
-	col := is.moves[len(is.moves)-1]
-	row := is.height[col] - 1
-
-	rlast := row + (3 * rdelta)
-	clast := col + (3 * cdelta)
-	if rlast < 0 || clast < 0 {
-		return -1
-	}
-	if rlast >= connect4.Height || clast >= connect4.Width {
-		return -1
-	}
-
-	checkingPiece := is.board[col][row]
-	if checkingPiece == -1 {
-		return -1
-	}
-	for i := 1; i < 4; i += 1 {
-		rind := row + (i * rdelta)
-		cind := col + (i * cdelta)
-		if is.board[cind][rind] != checkingPiece {
-			return -1
-		}
-	}
-	return checkingPiece
-}
-
-func (is *internalState) directionalWinCheck(cdelta, rdelta int) int {
-	for col, h := range is.height {
-		for row := 0; row < h; row += 1 {
-			rlast := row + (3 * rdelta)
-			clast := col + (3 * cdelta)
-			if rlast < 0 || clast < 0 {
-				continue
-			}
-			if rlast >= connect4.Height || clast >= connect4.Width {
-				continue
-			}
-			match := true
-			checkingPiece := is.board[col][row]
-			if checkingPiece == -1 {
-				continue
-			}
-			for i := 1; i < 4; i += 1 {
-				rind := row + (i * rdelta)
-				cind := col + (i * cdelta)
-				if is.board[cind][rind] != checkingPiece {
-					match = false
-					break
-				}
-			}
-			if match {
-				return checkingPiece
-			}
-		}
-	}
-	return -1
-}
-
-func (is *internalState) victoryCheck() int {
-	v := is.directionalWinCheck(1, 0)
-	if v > -1 {
-		return v
-	}
-	v = is.directionalWinCheck(0, 1)
-	if v > -1 {
-		return v
-	}
-	v = is.directionalWinCheck(1, 1)
-	if v > -1 {
-		return v
-	}
-	return is.directionalWinCheck(-1, 1)
 }
 
 type Action struct {
@@ -198,7 +59,7 @@ func (state *State) LegalActions() []ai.Action {
 		return toret
 	}
 	for i, col := range state.state.Columns {
-		if len(col) < connect4.Height {
+		if len(col) < ctypes.Height {
 			toret = append(toret, &Action{
 				Col: i,
 			})
@@ -215,7 +76,7 @@ func (state *State) LegalActions() []ai.Action {
 
 func (agent *Agent) BaseState() ai.State {
 	return &State{
-		state: &connect4.UpdateGameState{},
+		state: &ctypes.UpdateGameState{},
 	}
 }
 
@@ -226,19 +87,19 @@ func (agent *Agent) CanAct(state ai.State) bool {
 	return correctTurn || rematch
 }
 
-func (agent *Agent) min(is *internalState, alpha, beta, p_action, depth int) (int, int) {
+func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
 	if depth == 0 {
-		return p_action, is.score()
+		return p_action, score(is)
 	}
-	actions := is.generateMoves()
+	actions := is.GenerateMoves()
 
 	bestAction := actions[0]
 	bestScore := 100000
 
 	for _, action := range actions {
-		is.makeMove(action)
+		is.MakeMove(action)
 		_, score := agent.max(is, alpha, beta, action, depth-1)
-		is.unmakeMove(action)
+		is.UnmakeMove(action)
 		if score < bestScore {
 			bestAction = action
 			bestScore = score
@@ -253,19 +114,19 @@ func (agent *Agent) min(is *internalState, alpha, beta, p_action, depth int) (in
 	return bestAction, bestScore
 }
 
-func (agent *Agent) max(is *internalState, alpha, beta, p_action, depth int) (int, int) {
-	if depth == 0 || is.stalemateCheck() || is.victoryCheck() >= 0 {
-		return p_action, is.score()
+func (agent *Agent) max(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
+	if depth == 0 || is.StalemateCheck() || is.VictoryCheck() >= 0 {
+		return p_action, score(is)
 	}
-	actions := is.generateMoves()
+	actions := is.GenerateMoves()
 
 	bestAction := actions[0]
 	bestScore := -100000
 
 	for _, action := range actions {
-		is.makeMove(action)
+		is.MakeMove(action)
 		_, score := agent.min(is, alpha, beta, action, depth-1)
-		is.unmakeMove(action)
+		is.UnmakeMove(action)
 		if score > bestScore {
 			bestAction = action
 			bestScore = score
@@ -282,7 +143,7 @@ func (agent *Agent) max(is *internalState, alpha, beta, p_action, depth int) (in
 
 func (agent *Agent) GenerateAction(state ai.State) ai.Action {
 	s := state.(*State)
-	is := buildInternalState(agent.AgentId, s.state)
+	is := internalstate.NewInternalState(agent.AgentId, s.state)
 	actions := state.LegalActions()
 	a := actions[0].(*Action)
 	agent.RematchSent = a.Rematch
