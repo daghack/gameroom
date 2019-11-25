@@ -2,8 +2,6 @@ package main
 
 import (
 	"net/http"
-	"websockets/ai"
-	"websockets/ai/minmax/connect4ai"
 	"websockets/gameroom"
 	"websockets/games/connect4"
 )
@@ -24,13 +22,5 @@ func main() {
 	fs := http.FileServer(http.Dir("./static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 	http.HandleFunc("/game", gameConnect)
-	go http.ListenAndServe(":8080", nil)
-	a := &connect4ai.Agent{
-		AgentId: "Bot",
-	}
-	agent, err := ai.NewAgent(a, "ws://localhost:8080/game?userId=Bot")
-	if err != nil {
-		panic(err)
-	}
-	agent.Run()
+	http.ListenAndServe(":8080", nil)
 }

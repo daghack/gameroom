@@ -44,7 +44,7 @@ function row_col(row, col) {
 }
 
 function connect_socket() {
-	var socket = new WebSocket('ws://leviathan.omniadiscordia.net:8080/game?userId=' + userId);
+	var socket = new WebSocket('ws://localhost:8080/game?userId=' + userId);
 	socket.onmessage = function(event) {
 		console.log(event.data);
 		var board = JSON.parse(event.data);
