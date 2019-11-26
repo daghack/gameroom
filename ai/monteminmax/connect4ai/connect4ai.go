@@ -1,211 +1,111 @@
 package connect4ai
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math/rand"
 	"websockets/ai"
-	"websockets/games/connect4"
+	ctypes "websockets/games/connect4/types"
+	internalstate "websockets/games/connect4/types/internalstate"
 )
 
+const upsertGame = `
+INSERT INTO state_records (
+	id,
+	wins,
+	total
+) values (
+	?,
+	?,
+	1
+) ON CONFLICT(id) DO UPDATE SET
+	wins = state_records.wins + excluded.wins,
+	total = state_records.total + 1
+WHERE excluded.id=state_records.id
+`
+const selectGame = `
+SELECT wins, total FROM state_records
+WHERE id=?
+`
+
 type State struct {
-	state *connect4.UpdateGameState
+	state *ctypes.UpdateGameState
 }
 
-type internalState struct {
-	board  [][]int
-	height []int
-	turn   int
-	agent  int
-}
-
-func buildInternalState(agentId string, s *connect4.UpdateGameState) *internalState {
-	toret := &internalState{
-		board:  [][]int{},
-		height: []int{},
-		turn:   int(s.CurrentTurn),
-		agent:  int(s.Players[agentId]),
+func (agent *Agent) score(is *internalstate.InternalState, depth int) int {
+	victor := is.VictoryCheck()
+	if victor < 0 {
+		if is.StalemateCheck() {
+			return -100
+		}
+		return agent.evaluate(is)
 	}
-	for col := 0; col < connect4.Width; col += 1 {
-		toret.board = append(toret.board, []int{})
-		toret.height = append(toret.height, len(s.Columns[col]))
-		for row := 0; row < connect4.Height; row += 1 {
-			if row < len(s.Columns[col]) {
-				toret.board[col] = append(toret.board[col], int(s.Columns[col][row]))
-			} else {
-				toret.board[col] = append(toret.board[col], -1)
-			}
+	if victor == is.Agent {
+		return 1000 + depth
+	}
+	return -1000 - depth
+}
+
+func (agent *Agent) updateMemory(stateStr string, agentWins int) {
+	_, err := agent.Upsert.Exec(stateStr, agentWins)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (agent *Agent) readState(stateStr string) *WinRatio {
+	toret := &WinRatio{}
+	rows, err := agent.Select.Query(stateStr)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		err := rows.Scan(&toret.Wins, &toret.Total)
+		if err != nil {
+			panic(err)
 		}
 	}
 	return toret
 }
 
-func (is *internalState) score() int {
-	victor := is.victoryCheck()
-	if victor < 0 {
-		if is.stalemateCheck() {
-			return -10000
-		}
-		return is.evaluate()
-	}
-	if victor == is.agent {
-		return 100000
-	}
-	return -100000
-}
-
-func (is *internalState) rollout() int {
-	victor := is.victoryCheck()
+func (agent *Agent) rollout(is *internalstate.InternalState) int {
+	stateStr := is.ToString()
+	victor := is.VictoryCheck()
 	if victor > -1 {
-		if victor == is.agent {
+		if victor == is.Agent {
+			agent.updateMemory(stateStr, 1)
 			return 1
 		} else {
+			agent.updateMemory(stateStr, 0)
 			return 0
 		}
 	}
-	moves := is.generateMoves()
+	moves := is.GenerateMoves()
 	if len(moves) == 0 {
 		return 0
 	}
 	rand := moves[rand.Intn(len(moves))]
-	is.makeMove(rand)
-	defer is.unmakeMove(rand)
-	return is.rollout()
-}
-
-func (is *internalState) evaluate() int {
-	payout := 0
-	for i := 0; i < 1000; i += 1 {
-		payout += is.rollout()
-	}
-	return payout
-}
-
-func (is *internalState) generateMoves() []int {
-	toret := []int{}
-	for i, h := range is.height {
-		if h < connect4.Height {
-			toret = append(toret, i)
-		}
-	}
+	is.MakeMove(rand)
+	defer is.UnmakeMove(rand)
+	toret := agent.rollout(is)
+	agent.updateMemory(stateStr, toret)
 	return toret
 }
 
-func (is *internalState) makeMove(col int) {
-	height := is.height[col]
-	is.board[col][height] = is.turn
-	is.height[col] = height + 1
-	is.turn = 1 - is.turn
+func (agent *Agent) evaluate(is *internalstate.InternalState) int {
+	str := is.ToString()
+	for i := 0; i < 10; i += 1 {
+		agent.rollout(is)
+	}
+	ratio := agent.readState(str)
+	return int((float64(ratio.Wins) / float64(ratio.Total)) * 100)
 }
 
-func (is *internalState) unmakeMove(col int) {
-	height := is.height[col]
-	is.board[col][height-1] = -1
-	is.height[col] = height - 1
-	is.turn = 1 - is.turn
-}
-
-func (is *internalState) stalemateCheck() bool {
-	for _, h := range is.height {
-		if h != connect4.Height {
-			return false
-		}
-	}
-	return true
-}
-
-func (is *internalState) victoryCheck() int {
-	v := is.colVictoryCheck()
-	if v > -1 {
-		return v
-	}
-	v = is.rowVictoryCheck()
-	if v > -1 {
-		return v
-	}
-	v = is.diagTopRightCheck()
-	if v > -1 {
-		return v
-	}
-	return is.diagTopLeftCheck()
-}
-
-func (is *internalState) colVictoryCheck() int {
-	for col, h := range is.height {
-		if h < 4 {
-			continue
-		}
-		match := true
-		top := is.board[col][h-1]
-		for i := 0; i < 3; i += 1 {
-			match = match && top == is.board[col][h-2-i]
-		}
-		if match {
-			return top
-		}
-	}
-	return -1
-}
-
-func (is *internalState) rowVictoryCheck() int {
-	checkfor := is.height[:connect4.Width-3]
-	for col, h := range checkfor {
-		if h == 0 {
-			continue
-		}
-		for row := 0; row < h; row += 1 {
-			match := true
-			top := is.board[col][row]
-			for i := 0; i < 3; i += 1 {
-				match = match && top == is.board[col+1+i][row]
-			}
-			if match {
-				return top
-			}
-		}
-	}
-	return -1
-}
-
-func (is *internalState) diagTopRightCheck() int {
-	checkfor := is.height[:connect4.Width-3]
-	for col, h := range checkfor {
-		if h > connect4.Height-3 {
-			h = connect4.Height - 3
-		}
-		for row := 0; row < h; row += 1 {
-			match := true
-			top := is.board[col][row]
-			for i := 0; i < 3; i += 1 {
-				match = match && top == is.board[col+1+i][row+1+i]
-			}
-			if match {
-				return top
-			}
-		}
-	}
-	return -1
-}
-
-func (is *internalState) diagTopLeftCheck() int {
-	checkfor := is.height[connect4.Width-4:]
-	for col, h := range checkfor {
-		if h > connect4.Height-3 {
-			h = connect4.Height - 3
-		}
-		col = col + 3
-		for row := 0; row < h; row += 1 {
-			match := true
-			top := is.board[col][row]
-			for i := 0; i < 3; i += 1 {
-				match = match && top == is.board[col-1-i][row+1+i]
-			}
-			if match {
-				return top
-			}
-		}
-	}
-	return -1
+type WinRatio struct {
+	Wins  int
+	Total int
 }
 
 type Action struct {
@@ -236,7 +136,7 @@ func (state *State) LegalActions() []ai.Action {
 		return toret
 	}
 	for i, col := range state.state.Columns {
-		if len(col) < connect4.Height {
+		if len(col) < ctypes.Height {
 			toret = append(toret, &Action{
 				Col: i,
 			})
@@ -253,7 +153,7 @@ func (state *State) LegalActions() []ai.Action {
 
 func (agent *Agent) BaseState() ai.State {
 	return &State{
-		state: &connect4.UpdateGameState{},
+		state: &ctypes.UpdateGameState{},
 	}
 }
 
@@ -264,19 +164,19 @@ func (agent *Agent) CanAct(state ai.State) bool {
 	return correctTurn || rematch
 }
 
-func (agent *Agent) min(is *internalState, alpha, beta, p_action, depth int) (int, int) {
+func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
 	if depth == 0 {
-		return p_action, is.score()
+		return p_action, agent.score(is, depth)
 	}
-	actions := is.generateMoves()
+	actions := is.GenerateMoves()
 
 	bestAction := actions[0]
 	bestScore := 100000
 
 	for _, action := range actions {
-		is.makeMove(action)
+		is.MakeMove(action)
 		_, score := agent.max(is, alpha, beta, action, depth-1)
-		is.unmakeMove(action)
+		is.UnmakeMove(action)
 		if score < bestScore {
 			bestAction = action
 			bestScore = score
@@ -291,19 +191,19 @@ func (agent *Agent) min(is *internalState, alpha, beta, p_action, depth int) (in
 	return bestAction, bestScore
 }
 
-func (agent *Agent) max(is *internalState, alpha, beta, p_action, depth int) (int, int) {
-	if depth == 0 || is.stalemateCheck() || is.victoryCheck() >= 0 {
-		return p_action, is.score()
+func (agent *Agent) max(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
+	if depth == 0 || is.StalemateCheck() || is.VictoryCheck() >= 0 {
+		return p_action, agent.score(is, depth)
 	}
-	actions := is.generateMoves()
+	actions := is.GenerateMoves()
 
 	bestAction := actions[0]
 	bestScore := -100000
 
 	for _, action := range actions {
-		is.makeMove(action)
+		is.MakeMove(action)
 		_, score := agent.min(is, alpha, beta, action, depth-1)
-		is.unmakeMove(action)
+		is.UnmakeMove(action)
 		if score > bestScore {
 			bestAction = action
 			bestScore = score

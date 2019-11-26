@@ -3,7 +3,6 @@ package connect4ai
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"websockets/ai"
 	ctypes "websockets/games/connect4/types"
 	internalstate "websockets/games/connect4/types/internalstate"
@@ -13,7 +12,7 @@ type State struct {
 	state *ctypes.UpdateGameState
 }
 
-func score(is *internalstate.InternalState) int {
+func score(is *internalstate.InternalState, depth int) int {
 	victor := is.VictoryCheck()
 	if victor < 0 {
 		if is.StalemateCheck() {
@@ -22,13 +21,25 @@ func score(is *internalstate.InternalState) int {
 		return evaluate(is)
 	}
 	if victor == is.Agent {
-		return 1000
+		return 1000 + depth
 	}
-	return -1000
+	return -1000 - depth
 }
 
 func evaluate(is *internalstate.InternalState) int {
-	return rand.Intn(100)
+	total := 0
+	for col, h := range is.Height {
+		for row := 0; row < h; row += 1 {
+			score := is.LocScore[col][row]
+			piece := is.Board[col][row]
+			if piece == is.Agent {
+				total += score
+			} else if piece != -1 {
+				total -= score
+			}
+		}
+	}
+	return total
 }
 
 type Action struct {
@@ -89,7 +100,7 @@ func (agent *Agent) CanAct(state ai.State) bool {
 
 func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
 	if depth == 0 {
-		return p_action, score(is)
+		return p_action, score(is, depth)
 	}
 	actions := is.GenerateMoves()
 
@@ -116,7 +127,7 @@ func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, 
 
 func (agent *Agent) max(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
 	if depth == 0 || is.StalemateCheck() || is.VictoryCheck() >= 0 {
-		return p_action, score(is)
+		return p_action, score(is, depth)
 	}
 	actions := is.GenerateMoves()
 
@@ -150,7 +161,7 @@ func (agent *Agent) GenerateAction(state ai.State) ai.Action {
 	if a.Rematch {
 		return a
 	}
-	action, score := agent.max(is, -10000000, 10000000, 0, 7)
+	action, score := agent.max(is, -10000000, 10000000, 0, 9)
 	fmt.Println("Action: ", action)
 	fmt.Println("Score: ", score)
 	return &Action{

@@ -23,7 +23,7 @@ func NewConnect4() *Connect4 {
 	return toret
 }
 
-func (connect Connect4) requestRematch(player *ctypes.PlayerInfo) {
+func (connect *Connect4) requestRematch(player *ctypes.PlayerInfo) {
 	player.RematchAttempt = true
 	rematch := true
 	for _, player := range connect.players {
@@ -32,13 +32,14 @@ func (connect Connect4) requestRematch(player *ctypes.PlayerInfo) {
 	if rematch {
 		fmt.Println("REMATCH CONFIRMED")
 		connect.state = ctypes.NewGameState()
+		fmt.Printf("%+v\n", connect.state)
 		for _, player := range connect.players {
 			player.RematchAttempt = false
 		}
 	}
 }
 
-func (connect Connect4) gameLoop() {
+func (connect *Connect4) gameLoop() {
 	for move := range connect.moveChannel {
 		info, ok := connect.players[move.PlayerId]
 		if !ok {
