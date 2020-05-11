@@ -23,6 +23,15 @@ func NewConnect4() *Connect4 {
 	return toret
 }
 
+func (connect *Connect4) playerByPieceColor(piece ctypes.Color) string {
+	for id, playerInfo := range connect.players {
+		if playerInfo.PlayerColor == piece {
+			return id
+		}
+	}
+	return ""
+}
+
 func (connect *Connect4) requestRematch(player *ctypes.PlayerInfo) {
 	player.RematchAttempt = true
 	rematch := true
@@ -30,9 +39,7 @@ func (connect *Connect4) requestRematch(player *ctypes.PlayerInfo) {
 		rematch = rematch && player.RematchAttempt
 	}
 	if rematch {
-		fmt.Println("REMATCH CONFIRMED")
 		connect.state = ctypes.NewGameState()
-		fmt.Printf("%+v\n", connect.state)
 		for _, player := range connect.players {
 			player.RematchAttempt = false
 		}
@@ -53,10 +60,8 @@ func (connect *Connect4) gameLoop() {
 		if err != nil || (m.Col < 0 && !m.Rematch) {
 			continue
 		}
-		fmt.Printf("%+v\n", m)
 
 		if m.Rematch {
-			fmt.Println("REMATCH REQUESTED BY " + move.PlayerId)
 			connect.requestRematch(info)
 		} else {
 			err = connect.makeMove(info.PlayerColor, m.Col)
@@ -70,8 +75,7 @@ func (connect *Connect4) gameLoop() {
 
 func (connect *Connect4) sendUpdates() {
 	update := connect.marshalState()
-	for playerId, info := range connect.players {
-		fmt.Println("SENDING UPDATE TO " + playerId)
+	for _, info := range connect.players {
 		info.UpdateChan <- update
 	}
 }
@@ -87,14 +91,15 @@ func (connect *Connect4) makeMove(piece ctypes.Color, col int) error {
 		return fmt.Errorf("Column Full")
 	}
 	if connect.state.GameOver {
-		fmt.Println("GAME OVER")
 		return nil
 	}
-	fmt.Println("MAKING A MOVE IN COLUMN:", col)
+	lastTurn := connect.state.CurrentTurn
 	connect.state.CurrentTurn = ctypes.Black - connect.state.CurrentTurn
 	connect.state.Columns[col] = append(connect.state.Columns[col], piece)
 	winCheck := connect.winCheck(col)
 	if winCheck != nil {
+		player := connect.playerByPieceColor(lastTurn)
+		fmt.Println("WINNER:", player)
 		connect.state.GameOver = true
 		connect.state.WinningPositions = winCheck
 	}

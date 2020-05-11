@@ -99,7 +99,7 @@ func (agent *Agent) CanAct(state ai.State) bool {
 }
 
 func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
-	if depth == 0 {
+	if depth == 0 || is.StalemateCheck() || is.VictoryCheck() >= 0 {
 		return p_action, score(is, depth)
 	}
 	actions := is.GenerateMoves()
@@ -110,7 +110,7 @@ func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, 
 	for _, action := range actions {
 		is.MakeMove(action)
 		_, score := agent.max(is, alpha, beta, action, depth-1)
-		is.UnmakeMove(action)
+		is.UnmakeMove()
 		if score < bestScore {
 			bestAction = action
 			bestScore = score
@@ -137,7 +137,7 @@ func (agent *Agent) max(is *internalstate.InternalState, alpha, beta, p_action, 
 	for _, action := range actions {
 		is.MakeMove(action)
 		_, score := agent.min(is, alpha, beta, action, depth-1)
-		is.UnmakeMove(action)
+		is.UnmakeMove()
 		if score > bestScore {
 			bestAction = action
 			bestScore = score

@@ -1,7 +1,6 @@
 package gameroom
 
 import (
-	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
 	"net/http"
@@ -63,7 +62,6 @@ func (gr *GameRoom) forwardGameMoves(playerId string, conn *websocket.Conn) {
 	}
 	for {
 		mtype, msg, err := conn.ReadMessage()
-		fmt.Println(mtype, string(msg), err)
 		if err != nil {
 			switch err.(type) {
 			case *websocket.CloseError:
@@ -74,7 +72,6 @@ func (gr *GameRoom) forwardGameMoves(playerId string, conn *websocket.Conn) {
 		}
 		switch mtype {
 		case websocket.TextMessage:
-			fmt.Println("SENDING MOVE THROUGH MOVE CHAN:", string(msg))
 			move := &types.Move{
 				PlayerId: playerId,
 				Data:     msg,

@@ -1,7 +1,6 @@
 package connect4ai
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -9,25 +8,6 @@ import (
 	ctypes "websockets/games/connect4/types"
 	internalstate "websockets/games/connect4/types/internalstate"
 )
-
-const upsertGame = `
-INSERT INTO state_records (
-	id,
-	wins,
-	total
-) values (
-	?,
-	?,
-	1
-) ON CONFLICT(id) DO UPDATE SET
-	wins = state_records.wins + excluded.wins,
-	total = state_records.total + 1
-WHERE excluded.id=state_records.id
-`
-const selectGame = `
-SELECT wins, total FROM state_records
-WHERE id=?
-`
 
 type State struct {
 	state *ctypes.UpdateGameState
@@ -47,38 +27,12 @@ func (agent *Agent) score(is *internalstate.InternalState, depth int) int {
 	return -1000 - depth
 }
 
-func (agent *Agent) updateMemory(stateStr string, agentWins int) {
-	_, err := agent.Upsert.Exec(stateStr, agentWins)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (agent *Agent) readState(stateStr string) *WinRatio {
-	toret := &WinRatio{}
-	rows, err := agent.Select.Query(stateStr)
-	if err != nil {
-		panic(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		err := rows.Scan(&toret.Wins, &toret.Total)
-		if err != nil {
-			panic(err)
-		}
-	}
-	return toret
-}
-
 func (agent *Agent) rollout(is *internalstate.InternalState) int {
-	stateStr := is.ToString()
 	victor := is.VictoryCheck()
 	if victor > -1 {
 		if victor == is.Agent {
-			agent.updateMemory(stateStr, 1)
 			return 1
 		} else {
-			agent.updateMemory(stateStr, 0)
 			return 0
 		}
 	}
@@ -88,24 +42,21 @@ func (agent *Agent) rollout(is *internalstate.InternalState) int {
 	}
 	rand := moves[rand.Intn(len(moves))]
 	is.MakeMove(rand)
-	defer is.UnmakeMove(rand)
-	toret := agent.rollout(is)
-	agent.updateMemory(stateStr, toret)
-	return toret
+	defer is.UnmakeMove()
+	return agent.rollout(is)
 }
 
 func (agent *Agent) evaluate(is *internalstate.InternalState) int {
 	str := is.ToString()
-	for i := 0; i < 10; i += 1 {
-		agent.rollout(is)
+	if score, ok := agent.Visited[str]; ok {
+		return score
 	}
-	ratio := agent.readState(str)
-	return int((float64(ratio.Wins) / float64(ratio.Total)) * 100)
-}
-
-type WinRatio struct {
-	Wins  int
-	Total int
+	total := 0
+	for i := 0; i < 100; i += 1 {
+		total += agent.rollout(is)
+	}
+	agent.Visited[str] = total
+	return total
 }
 
 type Action struct {
@@ -116,6 +67,7 @@ type Action struct {
 type Agent struct {
 	AgentId     string
 	RematchSent bool
+	Visited     map[string]int
 }
 
 func (action *Action) MarshalJSON() ([]byte, error) {
@@ -165,7 +117,7 @@ func (agent *Agent) CanAct(state ai.State) bool {
 }
 
 func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, depth int) (int, int) {
-	if depth == 0 {
+	if depth == 0 || is.StalemateCheck() || is.VictoryCheck() >= 0 {
 		return p_action, agent.score(is, depth)
 	}
 	actions := is.GenerateMoves()
@@ -176,7 +128,7 @@ func (agent *Agent) min(is *internalstate.InternalState, alpha, beta, p_action, 
 	for _, action := range actions {
 		is.MakeMove(action)
 		_, score := agent.max(is, alpha, beta, action, depth-1)
-		is.UnmakeMove(action)
+		is.UnmakeMove()
 		if score < bestScore {
 			bestAction = action
 			bestScore = score
@@ -203,7 +155,7 @@ func (agent *Agent) max(is *internalstate.InternalState, alpha, beta, p_action, 
 	for _, action := range actions {
 		is.MakeMove(action)
 		_, score := agent.min(is, alpha, beta, action, depth-1)
-		is.UnmakeMove(action)
+		is.UnmakeMove()
 		if score > bestScore {
 			bestAction = action
 			bestScore = score
@@ -219,15 +171,16 @@ func (agent *Agent) max(is *internalstate.InternalState, alpha, beta, p_action, 
 }
 
 func (agent *Agent) GenerateAction(state ai.State) ai.Action {
+	agent.Visited = map[string]int{}
 	s := state.(*State)
-	is := buildInternalState(agent.AgentId, s.state)
+	is := internalstate.NewInternalState(agent.AgentId, s.state)
 	actions := state.LegalActions()
 	a := actions[0].(*Action)
 	agent.RematchSent = a.Rematch
 	if a.Rematch {
 		return a
 	}
-	action, score := agent.max(is, -10000000, 10000000, 0, 7)
+	action, score := agent.max(is, -10000000, 10000000, 0, 5)
 	fmt.Println("Action: ", action)
 	fmt.Println("Score: ", score)
 	return &Action{

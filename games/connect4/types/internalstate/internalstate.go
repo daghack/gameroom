@@ -8,9 +8,9 @@ type InternalState struct {
 	LocScore [][]int
 	Board    [][]int
 	Height   []int
-	turn     int
+	Turn     int
 	Agent    int
-	moves    []int
+	Moves    []int
 }
 
 func NewInternalState(agentId string, s *ctypes.UpdateGameState) *InternalState {
@@ -27,9 +27,9 @@ func NewInternalState(agentId string, s *ctypes.UpdateGameState) *InternalState 
 		LocScore: loc_score,
 		Board:    [][]int{},
 		Height:   []int{},
-		turn:     int(s.CurrentTurn),
+		Turn:     int(s.CurrentTurn),
 		Agent:    int(s.Players[agentId]),
-		moves:    []int{},
+		Moves:    []int{},
 	}
 	for col := 0; col < ctypes.Width; col += 1 {
 		toret.Board = append(toret.Board, []int{})
@@ -69,18 +69,19 @@ func (is *InternalState) GenerateMoves() []int {
 
 func (is *InternalState) MakeMove(col int) {
 	Height := is.Height[col]
-	is.Board[col][Height] = is.turn
+	is.Board[col][Height] = is.Turn
 	is.Height[col] = Height + 1
-	is.turn = 1 - is.turn
-	is.moves = append(is.moves, col)
+	is.Turn = 1 - is.Turn
+	is.Moves = append(is.Moves, col)
 }
 
-func (is *InternalState) UnmakeMove(col int) {
+func (is *InternalState) UnmakeMove() {
+	col := is.Moves[len(is.Moves)-1]
 	Height := is.Height[col]
 	is.Board[col][Height-1] = -1
 	is.Height[col] = Height - 1
-	is.turn = 1 - is.turn
-	is.moves = is.moves[:len(is.moves)-1]
+	is.Turn = 1 - is.Turn
+	is.Moves = is.Moves[:len(is.Moves)-1]
 }
 
 func (is *InternalState) StalemateCheck() bool {
@@ -93,7 +94,7 @@ func (is *InternalState) StalemateCheck() bool {
 }
 
 func (is *InternalState) directionalWinCheckLastMove(cdelta, rdelta int) int {
-	col := is.moves[len(is.moves)-1]
+	col := is.Moves[len(is.Moves)-1]
 	row := is.Height[col] - 1
 
 	rlast := row + (3 * rdelta)
